@@ -1,31 +1,32 @@
+# Import necessary libraries
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from windrose import WindroseAxes
 import numpy as np
-
 from matplotlib import cm  # Import Matplotlib's colormap library
+from sklearn.linear_model import LinearRegression
+from scipy.stats import zscore
 
-
-# Load CSV files
+# Load CSV files for datasets
 benin_df = pd.read_csv('../files/benin-malanville.csv')
 sierra_df = pd.read_csv('../files/sierraleone-bumbuna.csv')
 togo_df = pd.read_csv('../files/togo-dapaong_qc.csv')
 
-# Inspect the data
+# Inspect the data structure and summary
 print("Benin Data:")
 print(benin_df.head())
-print(benin_df.info())  # Information about Benin dataset
+print(benin_df.info())  # Overview of Benin dataset structure
 
 print("\nSierra Leone Data:")
 print(sierra_df.head())
-print(sierra_df.info())  # Information about Sierra Leone dataset
+print(sierra_df.info())  # Overview of Sierra Leone dataset structure
 
 print("\nTogo Data:")
 print(togo_df.head())
-print(togo_df.info())  # Information about Togo dataset
+print(togo_df.info())  # Overview of Togo dataset structure
 
-# Descriptive statistics for all three datasets
+# Generate descriptive statistics for each dataset
 print("\nBenin Data Descriptive Statistics:")
 print(benin_df.describe())
 print("\nSierra Leone Data Descriptive Statistics:")
@@ -33,60 +34,69 @@ print(sierra_df.describe())
 print("\nTogo Data Descriptive Statistics:")
 print(togo_df.describe())
 
-# Dropping the 'Comments' column if it's unnecessary
-benin_df = benin_df.drop(columns=['Comments'], errors='ignore')  # errors='ignore' to avoid errors if 'Comments' doesn't exist
+# Drop the 'Comments' column if it exists, as it is entirely null
+benin_df = benin_df.drop(columns=['Comments'], errors='ignore')
 sierra_df = sierra_df.drop(columns=['Comments'], errors='ignore')
 togo_df = togo_df.drop(columns=['Comments'], errors='ignore')
 
-# Check for missing values after dropping 'Comments' column
+# Check for missing values in the datasets
 print("\nBenin Data - Missing Values:")
-print(benin_df.isnull().sum())  # Show missing values for Benin dataset
-
+print(benin_df.isnull().sum())
 print("\nSierra Leone Data - Missing Values:")
-print(sierra_df.isnull().sum())  # Show missing values for Sierra Leone dataset
-
+print(sierra_df.isnull().sum())
 print("\nTogo Data - Missing Values:")
-print(togo_df.isnull().sum())  # Show missing values for Togo dataset
+print(togo_df.isnull().sum())
 
-# Handle missing values by filling with the median (if necessary)
-## Fill missing values with the median only for numeric columns
-benin_df_numeric = benin_df.select_dtypes(include=['float64', 'int64'])  # Select only numeric columns
-benin_df[benin_df_numeric.columns] = benin_df_numeric.fillna(benin_df_numeric.median())
-
-sierra_df_numeric = sierra_df.select_dtypes(include=['float64', 'int64'])  # Select only numeric columns
-sierra_df[sierra_df_numeric.columns] = sierra_df_numeric.fillna(sierra_df_numeric.median())
-
-togo_df_numeric = togo_df.select_dtypes(include=['float64', 'int64'])  # Select only numeric columns
-togo_df[togo_df_numeric.columns] = togo_df_numeric.fillna(togo_df_numeric.median())
-
+# Fill missing values in numeric columns with the median
+for df in [benin_df, sierra_df, togo_df]:
+    numeric_cols = df.select_dtypes(include=['float64', 'int64'])
+    df[numeric_cols.columns] = numeric_cols.fillna(numeric_cols.median())
 
 # Verify that missing values have been handled
 print("\nBenin Data - Missing Values After Handling:")
-print(benin_df.isnull().sum())  # Verify missing values for Benin
-
+print(benin_df.isnull().sum())
 print("\nSierra Leone Data - Missing Values After Handling:")
-print(sierra_df.isnull().sum())  # Verify missing values for Sierra Leone
-
+print(sierra_df.isnull().sum())
 print("\nTogo Data - Missing Values After Handling:")
-print(togo_df.isnull().sum())  # Verify missing values for Togo
-# Check if 'Comments' column exists in Benin dataframe
-print("'Comments' in Benin Data:", 'Comments' in benin_df.columns)
+print(togo_df.isnull().sum())
 
-# Check if 'Comments' column exists in Sierra Leone dataframe
-print("'Comments' in Sierra Leone Data:", 'Comments' in sierra_df.columns)
-
-# Check if 'Comments' column exists in Togo dataframe
-print("'Comments' in Togo Data:", 'Comments' in togo_df.columns)
-
+# Convert the 'Timestamp' column to datetime format for time-based analysis
 benin_df['Timestamp'] = pd.to_datetime(benin_df['Timestamp'])
+sierra_df['Timestamp'] = pd.to_datetime(sierra_df['Timestamp'])
+togo_df['Timestamp'] = pd.to_datetime(togo_df['Timestamp'])
 
-# Extract time components
+# Extract time components from the 'Timestamp' column for trend analysis
 benin_df['Month'] = benin_df['Timestamp'].dt.month
 benin_df['Day'] = benin_df['Timestamp'].dt.day
 benin_df['Hour'] = benin_df['Timestamp'].dt.hour
 
-# Aggregate data by month
-monthly_data = benin_df.groupby('Month')[['GHI', 'DNI', 'DHI', 'Tamb']].mean()
+# Identify and remove outliers based on Z-scores (values with |Z| > 3 are considered outliers)
+z_scores = benin_df.select_dtypes(include=['float64', 'int64']).apply(zscore)
+benin_df_cleaned = benin_df[(z_scores.abs() < 3).all(axis=1)]
+
+# Remove duplicate rows from all datasets
+benin_df = benin_df.drop_duplicates()
+sierra_df = sierra_df.drop_duplicates()
+togo_df = togo_df.drop_duplicates()
+
+# Replace negative values in wind speed (WS) and irradiance (GHI) columns with NaN
+for col in ['WS', 'GHI']:
+    benin_df[col] = benin_df[col].apply(lambda x: x if x >= 0 else None)
+    sierra_df[col] = sierra_df[col].apply(lambda x: x if x >= 0 else None)
+    togo_df[col] = togo_df[col].apply(lambda x: x if x >= 0 else None)
+
+# Review the cleaned dataset structure and statistics
+print("\nBenin Data After Cleaning:")
+print(benin_df.info())
+print("\nSierra Leone Data After Cleaning:")
+print(sierra_df.info())
+print("\nTogo Data After Cleaning:")
+print(togo_df.info())
+
+# Optionally save the cleaned datasets to new CSV files
+benin_df.to_csv('benin_cleaned.csv', index=False)
+sierra_df.to_csv('sierra_cleaned.csv', index=False)
+togo_df.to_csv('togo_cleaned.csv', index=False)
 
 # Plot line chart for monthly trends
 monthly_data.plot(kind='line', figsize=(10, 6), marker='o')
@@ -279,40 +289,330 @@ ax.set_title('Radial Bar Plot of Wind Speed and Direction', va='bottom')
 plt.show()
 
 
-# # # Create a wind rose plot
-# # fig = plt.figure(figsize=(8, 6))
-# # ax = WindroseAxes.from_ax(fig=fig)
-# # ax.bar(benin_df['WD'], benin_df['WS'], normed=True, opening=0.8, edgecolor='black', cmap='viridis')
+# Create a wind rose plot
+fig = plt.figure(figsize=(8, 6))
+ax = WindroseAxes.from_ax(fig=fig)
+ax.bar(benin_df['WD'], benin_df['WS'], normed=True, opening=0.8, edgecolor='black', cmap='viridis')
 
-# # Add labels and title
-# ax.set_title("Wind Rose: Wind Speed and Direction")
-# ax.set_legend(title="Wind Speed (m/s)")
-# plt.show()
+# Add labels and title
+ax.set_title("Wind Rose: Wind Speed and Direction")
+ax.set_legend(title="Wind Speed (m/s)")
+plt.show()
 
-# wind_direction_std = benin_df['WD'].std()
-# print("Standard Deviation of Wind Direction:", wind_direction_std)
+wind_direction_std = benin_df['WD'].std()
+print("Standard Deviation of Wind Direction:", wind_direction_std)
 
-# plt.figure(figsize=(10, 6))
-# plt.plot(benin_df['Timestamp'], benin_df['WD'], color='blue', alpha=0.7)
-# plt.title("Wind Direction Variability Over Time")
-# plt.xlabel("Time")
-# plt.ylabel("Wind Direction (degrees)")
-# plt.grid()
-# plt.show()
-# # Create a wind rose plot
-# fig = plt.figure(figsize=(8, 6))
-# ax = WindroseAxes.from_ax(fig=fig)
-# ax.bar(
-#     benin_df['WD'], 
-#     benin_df['WS'], 
-#     normed=True, 
-#     opening=0.8, 
-#     edgecolor='black', 
-#     cmap=cm.get_cmap('viridis')  # Pass colormap object instead of a string
-# )
+plt.figure(figsize=(10, 6))
+plt.plot(benin_df['Timestamp'], benin_df['WD'], color='blue', alpha=0.7)
+plt.title("Wind Direction Variability Over Time")
+plt.xlabel("Time")
+plt.ylabel("Wind Direction (degrees)")
+plt.grid()
+plt.show()
+# Create a wind rose plot
+fig = plt.figure(figsize=(8, 6))
+ax = WindroseAxes.from_ax(fig=fig)
+ax.bar(
+    benin_df['WD'], 
+    benin_df['WS'], 
+    normed=True, 
+    opening=0.8, 
+    edgecolor='black', 
+    cmap=cm.get_cmap('viridis')  # Pass colormap object instead of a string
+)
 
-# # Add labels and title
-# ax.set_title("Wind Rose: Wind Speed and Direction")
-# ax.set_legend(title="Wind Speed (m/s)")
-# plt.show()
+# Add labels and title
+ax.set_title("Wind Rose: Wind Speed and Direction")
+ax.set_legend(title="Wind Speed (m/s)")
+plt.show()
 
+
+
+# Scatter Plot: RH vs. Temperature and Solar Radiation
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+
+# RH vs. TModA
+sns.scatterplot(x=benin_df['RH'], y=benin_df['TModA'], ax=axes[0, 0], color='b')
+axes[0, 0].set_title('RH vs. TModA')
+axes[0, 0].set_xlabel('Relative Humidity (%)')
+axes[0, 0].set_ylabel('Temperature (TModA)')
+
+# RH vs. TModB
+sns.scatterplot(x=benin_df['RH'], y=benin_df['TModB'], ax=axes[0, 1], color='g')
+axes[0, 1].set_title('RH vs. TModB')
+axes[0, 1].set_xlabel('Relative Humidity (%)')
+axes[0, 1].set_ylabel('Temperature (TModB)')
+
+# RH vs. GHI
+sns.scatterplot(x=benin_df['RH'], y=benin_df['GHI'], ax=axes[0, 2], color='r')
+axes[0, 2].set_title('RH vs. GHI')
+axes[0, 2].set_xlabel('Relative Humidity (%)')
+axes[0, 2].set_ylabel('Global Horizontal Irradiance (GHI)')
+
+# RH vs. DNI
+sns.scatterplot(x=benin_df['RH'], y=benin_df['DNI'], ax=axes[1, 0], color='c')
+axes[1, 0].set_title('RH vs. DNI')
+axes[1, 0].set_xlabel('Relative Humidity (%)')
+axes[1, 0].set_ylabel('Direct Normal Irradiance (DNI)')
+
+# RH vs. DHI
+sns.scatterplot(x=benin_df['RH'], y=benin_df['DHI'], ax=axes[1, 1], color='m')
+axes[1, 1].set_title('RH vs. DHI')
+axes[1, 1].set_xlabel('Relative Humidity (%)')
+axes[1, 1].set_ylabel('Diffuse Horizontal Irradiance (DHI)')
+
+# Hide the unused plot
+axes[1, 2].axis('off')
+
+plt.tight_layout()
+plt.show()
+
+# Select columns of interest for correlation
+correlation_cols = ['RH', 'TModA', 'TModB', 'GHI', 'DNI', 'DHI']
+correlation_matrix = benin_df[correlation_cols].corr()
+
+# Plot the correlation matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+plt.title("Correlation Matrix: RH vs Temperature and Solar Radiation")
+plt.show()
+
+
+# Prepare the data for regression (RH vs Temperature)
+X = benin_df[['RH']]  # Predictor (Relative Humidity)
+y_tmoda = benin_df['TModA']  # Target (Temperature TModA)
+
+# Perform linear regression
+model_tmoda = LinearRegression()
+model_tmoda.fit(X, y_tmoda)
+
+# Predict and plot the regression line
+y_pred_tmoda = model_tmoda.predict(X)
+plt.figure(figsize=(8, 6))
+plt.scatter(benin_df['RH'], benin_df['TModA'], color='b', label='Actual Data')
+plt.plot(benin_df['RH'], y_pred_tmoda, color='r', label='Regression Line')
+plt.title("Linear Regression: RH vs TModA")
+plt.xlabel('Relative Humidity (%)')
+plt.ylabel('Temperature (TModA)')
+plt.legend()
+plt.grid()
+plt.show()
+
+
+# Scatter Plot: RH vs. Temperature and Solar Radiation
+fig, axes = plt.subplots(3, 3, figsize=(18, 18))
+
+# RH vs. TModA
+sns.scatterplot(x=benin_df['RH'], y=benin_df['TModA'], ax=axes[0, 0], color='b')
+axes[0, 0].set_title('RH vs. TModA')
+axes[0, 0].set_xlabel('Relative Humidity (%)')
+axes[0, 0].set_ylabel('Temperature (TModA)')
+
+# RH vs. TModB
+sns.scatterplot(x=benin_df['RH'], y=benin_df['TModB'], ax=axes[0, 1], color='g')
+axes[0, 1].set_title('RH vs. TModB')
+axes[0, 1].set_xlabel('Relative Humidity (%)')
+axes[0, 1].set_ylabel('Temperature (TModB)')
+
+# RH vs. GHI
+sns.scatterplot(x=benin_df['RH'], y=benin_df['GHI'], ax=axes[0, 2], color='r')
+axes[0, 2].set_title('RH vs. GHI')
+axes[0, 2].set_xlabel('Relative Humidity (%)')
+axes[0, 2].set_ylabel('Global Horizontal Irradiance (GHI)')
+
+# RH vs. DNI
+sns.scatterplot(x=benin_df['RH'], y=benin_df['DNI'], ax=axes[1, 0], color='c')
+axes[1, 0].set_title('RH vs. DNI')
+axes[1, 0].set_xlabel('Relative Humidity (%)')
+axes[1, 0].set_ylabel('Direct Normal Irradiance (DNI)')
+
+# RH vs. DHI
+sns.scatterplot(x=benin_df['RH'], y=benin_df['DHI'], ax=axes[1, 1], color='m')
+axes[1, 1].set_title('RH vs. DHI')
+axes[1, 1].set_xlabel('Relative Humidity (%)')
+axes[1, 1].set_ylabel('Diffuse Horizontal Irradiance (DHI)')
+
+# Hide the unused plot
+axes[1, 2].axis('off')
+
+plt.tight_layout()
+plt.show()
+
+# Select columns of interest for correlation
+correlation_cols = ['RH', 'TModA', 'TModB', 'GHI', 'DNI', 'DHI']
+correlation_matrix = benin_df[correlation_cols].corr()
+
+# Plot the correlation matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+plt.title("Correlation Matrix: RH vs Temperature and Solar Radiation")
+plt.show()
+
+
+from sklearn.linear_model import LinearRegression
+
+# Prepare the data for regression (RH vs Temperature)
+X = benin_df[['RH']]  # Predictor (Relative Humidity)
+y_tmoda = benin_df['TModA']  # Target (Temperature TModA)
+
+# Perform linear regression
+model_tmoda = LinearRegression()
+model_tmoda.fit(X, y_tmoda)
+
+# Predict and plot the regression line for TModA
+y_pred_tmoda = model_tmoda.predict(X)
+plt.figure(figsize=(8, 6))
+plt.scatter(benin_df['RH'], benin_df['TModA'], color='b', label='Actual Data')
+plt.plot(benin_df['RH'], y_pred_tmoda, color='r', label='Regression Line')
+plt.title("Linear Regression: RH vs TModA")
+plt.xlabel('Relative Humidity (%)')
+plt.ylabel('Temperature (TModA)')
+plt.legend()
+plt.grid()
+plt.show()
+
+y_tmodb = benin_df['TModB']  # Target (Temperature TModB)
+model_tmodb = LinearRegression()
+model_tmodb.fit(X, y_tmodb)
+
+# Predict and plot the regression line for TModB
+y_pred_tmodb = model_tmodb.predict(X)
+plt.figure(figsize=(8, 6))
+plt.scatter(benin_df['RH'], benin_df['TModB'], color='g', label='Actual Data')
+plt.plot(benin_df['RH'], y_pred_tmodb, color='r', label='Regression Line')
+plt.title("Linear Regression: RH vs TModB")
+plt.xlabel('Relative Humidity (%)')
+plt.ylabel('Temperature (TModB)')
+plt.legend()
+plt.grid()
+plt.show()
+
+y_ghi = benin_df['GHI']  # Target (Global Horizontal Irradiance GHI)
+model_ghi = LinearRegression()
+model_ghi.fit(X, y_ghi)
+
+# Predict and plot the regression line for GHI
+y_pred_ghi = model_ghi.predict(X)
+plt.figure(figsize=(8, 6))
+plt.scatter(benin_df['RH'], benin_df['GHI'], color='r', label='Actual Data')
+plt.plot(benin_df['RH'], y_pred_ghi, color='y', label='Regression Line')
+plt.title("Linear Regression: RH vs GHI")
+plt.xlabel('Relative Humidity (%)')
+plt.ylabel('Global Horizontal Irradiance (GHI)')
+plt.legend()
+plt.grid()
+plt.show()
+
+y_dni = benin_df['DNI']  # Target (Direct Normal Irradiance DNI)
+model_dni = LinearRegression()
+model_dni.fit(X, y_dni)
+
+# Predict and plot the regression line for DNI
+y_pred_dni = model_dni.predict(X)
+plt.figure(figsize=(8, 6))
+plt.scatter(benin_df['RH'], benin_df['DNI'], color='c', label='Actual Data')
+plt.plot(benin_df['RH'], y_pred_dni, color='y', label='Regression Line')
+plt.title("Linear Regression: RH vs DNI")
+plt.xlabel('Relative Humidity (%)')
+plt.ylabel('Direct Normal Irradiance (DNI)')
+plt.legend()
+plt.grid()
+plt.show()
+
+y_dhi = benin_df['DHI']  # Target (Diffuse Horizontal Irradiance DHI)
+model_dhi = LinearRegression()
+model_dhi.fit(X, y_dhi)
+
+# Predict and plot the regression line for DHI
+y_pred_dhi = model_dhi.predict(X)
+plt.figure(figsize=(8, 6))
+plt.scatter(benin_df['RH'], benin_df['DHI'], color='m', label='Actual Data')
+plt.plot(benin_df['RH'], y_pred_dhi, color='r', label='Regression Line')
+plt.title("Linear Regression: RH vs DHI")
+plt.xlabel('Relative Humidity (%)')
+plt.ylabel('Diffuse Horizontal Irradiance (DHI)')
+plt.legend()
+plt.grid()
+plt.show()
+
+
+# histograms
+
+# List of variables for which we want to plot histograms
+variables = ['GHI', 'DNI', 'DHI', 'WS', 'TModA', 'TModB']
+
+# Set up the subplots: 2 rows and 3 columns for the 6 variables
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+
+# Plot histograms for each variable
+for i, var in enumerate(variables):
+    ax = axes[i // 3, i % 3]  # Determine position in the subplot grid
+    sns.histplot(benin_df[var], kde=True, bins=30, color='blue', ax=ax)  # kde=True adds the density curve
+    ax.set_title(f'Histogram of {var}')
+    ax.set_xlabel(var)
+    ax.set_ylabel('Frequency')
+    ax.grid(True)
+
+# Adjust the layout to make room for titles
+plt.tight_layout()
+plt.show()
+z- score analysis
+
+
+
+# List of variables for which we will calculate the Z-scores
+variables = ['GHI', 'DNI', 'DHI', 'WS', 'TModA', 'TModB']
+
+# Calculate Z-scores for each variable
+z_scores = benin_df[variables].apply(zscore)
+
+# Show the Z-scores for the first few rows
+print("Z-Scores for each variable:\n", z_scores.head())
+
+# Flag the data points that are outliers (Z-score > 3 or Z-score < -3)
+outliers = (z_scores.abs() > 3)
+
+# Display the outliers (True means outlier)
+print("\nOutliers Flagged (True = Outlier, False = Normal):\n", outliers)
+
+# For each variable, show how many outliers exist
+outlier_count = outliers.sum()
+print("\nOutliers Count per Variable:\n", outlier_count)
+
+# Optionally, visualize the Z-scores using histograms
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+
+for i, var in enumerate(variables):
+    ax = axes[i // 3, i % 3]
+    sns.histplot(z_scores[var], kde=True, bins=30, color='purple', ax=ax)
+    ax.set_title(f'Z-Scores Distribution for {var}')
+    ax.set_xlabel('Z-Score')
+    ax.set_ylabel('Frequency')
+    ax.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+
+
+# Variables to use for the bubble chart
+x = benin_df['GHI']  # X-axis: GHI
+y = benin_df['TEMP']  # Y-axis: Temperature (Tamb)
+size = benin_df['RH']  # Bubble size: Relative Humidity (RH) or BP (Barometric Pressure)
+
+# Normalize the bubble size for better visualization
+# We can normalize by scaling the size of the bubbles
+size = (size - size.min()) / (size.max() - size.min()) * 1000  # Normalize to range 0-1000
+
+# Create the bubble chart
+plt.figure(figsize=(10, 6))
+scatter = plt.scatter(x, y, s=size, c=size, cmap='viridis', alpha=0.6, edgecolors="w", linewidth=0.5)
+
+# Add labels and title
+plt.title('Bubble Chart: GHI vs. Tamb vs. RH')
+plt.xlabel('Global Horizontal Irradiance (GHI)')
+plt.ylabel('Temperature (Tamb)')
+plt.colorbar(scatter, label='Relative Humidity (RH)')  # Color bar to indicate the RH values
+
+plt.grid(True)
+plt.show()
